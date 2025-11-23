@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bible Quest Runner — Boss Edition</title>
+<style>
+:root { --primary:#4e6cff; --accent:#ffc04e; --danger:#d14444; --bg:#e9f3ff; --ui-bg:#ffffffcc; }
+body { margin:0; background:var(--bg); font-family:Trebuchet MS,Segoe UI,Arial,sans-serif; user-select:none; overflow:hidden; }
+#gameCanvas { display:block; margin:12px auto 0; background:linear-gradient(#87cefa,#d0f4ff); border:4px solid var(--primary); border-radius:12px; }
+#mainMenu, #shopMenu, #characterSelect { text-align:center; padding-top:30px; }
+.gold { color:#b8860b; font-weight:700; font-size:18px; }
+.charCard { display:inline-block; width:140px; background:var(--ui-bg); margin:10px; padding:10px; border-radius:12px; box-shadow:0 0 8px rgba(0,0,0,0.25); cursor:pointer; transition:transform 0.2s; }
+.charCard:hover { transform:scale(1.05); }
+.charCard.selected { border:3px solid var(--primary); }
+.charSprite { width:60px; height:60px; margin-bottom:8px; border-radius:8px; }
+.tm { padding:10px 20px; background:var(--primary); color:white; border:none; border-radius:10px; cursor:pointer; display:inline-block; font-size:16px; transition:background 0.2s; }
+.tm:hover { background:#3a52d6; }
+#triviaOverlay { position:fixed; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; }
+#triviaCard { position:relative; background:white; padding:20px; border-radius:14px; width:360px; max-width:90%; text-align:center; box-shadow:0 0 10px rgba(0,0,0,0.3); }
+#triviaResult { font-weight:bold; margin-top:10px; font-size:16px; }
+#triviaClose { position:absolute; top:8px; right:12px; font-size:20px; font-weight:bold; cursor:pointer; color:#d14444; display:none; }
+#ui { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:15px; font-size:18px; }
+#backToMenuInGame { position:absolute; top:10px; right:10px; padding:8px 16px; background:var(--accent); color:#000; border:none; border-radius:10px; cursor:pointer; display:none; }
+#backToMenuInGame:hover { background:#e6b233; }
+#progressBarContainer { position:absolute; top:50px; left:50%; transform:translateX(-50%); width:70%; height:12px; background:#ccc; border-radius:6px; display:none; }
+#progressLabel { position:absolute; top:35px; left:50%; transform:translateX(-50%); font-weight:bold; display:none; }
+#progressBar { width:0%; height:100%; background:var(--primary); border-radius:6px; }
+</style>
+</head>
+<body>
+<div id="mainMenu">
+<h1>Bible Quest Runner</h1>
+<p class="gold">Total Scrolls: <span id="totalScrolls">0</span></p>
+<button id="playBtn" class="tm">Play</button><br><br>
+<button id="shopBtn" class="tm" style="background:var(--accent);">Shop</button>
+</div>
+<div id="shopMenu" style="display:none;">
+<h2>Scroll Shop</h2>
+<p class="gold">Scrolls: <span id="shopScrollCount">0</span></p>
+<div class="shop-item" data-char="Samson"><h3>Samson</h3><p>Mighty Strength — smashes obstacles</p><button class="buyBtn tm" data-price="50">Buy for 50 Scrolls</button></div>
+<div class="shop-item" data-char="Deborah"><h3>Deborah</h3><p>Prophetic Foresight — warns of obstacles</p><button class="buyBtn tm" data-price="80">Buy for 80 Scrolls</button></div>
+<button id="backToMenu" class="tm" style="margin-top:25px; background:var(--primary); color:white;">Back</button>
+</div>
+<div id="characterSelect" style="display:none;">
+<h2>Select Character</h2>
+<div class="charCard" data-char="David"><img class="charSprite" src="https://i.imgur.com/2yOQXQM.png" /><div class="charName">David</div><div class="charAbility">Higher Jump</div></div>
+<div class="charCard" data-char="Esther"><img class="charSprite" src="https://i.imgur.com/aFEy7zN.png" /><div class="charName">Esther</div><div class="charAbility">Slows Obstacles</div></div>
+<div class="charCard" data-char="Paul"><img class="charSprite" src="https://i.imgur.com/nGLnXWT.png" /><div class="charName">Paul</div><div class="charAbility">Shield</div></div>
+<div class="charCard" data-char="Ruth"><img class="charSprite" src="https://i.imgur.com/lIpqg8O.png" /><div class="charName">Ruth</div><div class="charAbility">Scroll Magnet</div></div>
+<br><button id="beginRunBtn" class="tm">Start Run</button><br>
+<button id="backToMenuFromChar" class="tm" style="margin-top:10px; background:var(--accent);">Back to Menu</button>
+</div>
+<canvas id="gameCanvas" width="760" height="360" style="display:none;"></canvas>
+<button id="backToMenuInGame">Back to Menu</button>
+<div id="ui">
+<div id="score">Scrolls This Run: 0</div>
+<div id="progressLabel">Level Progress</div>
+<div id="progressBarContainer"><div id="progressBar"></div></div>
+<button id="nextLevelBtn" class="tm">Next Level</button>
+<button id="restartBtn" class="tm">Play Again</button>
+</div>
+<div id="triviaOverlay">
+  <div id="triviaCard">
+    <div id="triviaClose">×</div>
+    <div id="triviaQuestion" style="font-size:18px; font-weight:700; margin-bottom:12px"></div>
+    <input id="triviaInput" type="text" placeholder="Your answer..." style="padding:8px; width:92%; border-radius:8px; border:1px solid #888; margin-bottom:10px;" />
+    <br>
+    <button id="submitTrivia" class="tm" style="display:inline-block">Submit</button>
+    <div id="triviaResult"></div>
+  </div>
+</div>
+<script>
+let totalScrolls=0,ownedCharacters=['David','Esther','Paul','Ruth'],selectedChar=null;
+const mainMenu=document.getElementById('mainMenu'),shopMenu=document.getElementById('shopMenu'),charSelect=document.getElementById('characterSelect'),gameCanvas=document.getElementById('gameCanvas'),ctx=gameCanvas.getContext('2d');
+const playBtn=document.getElementById('playBtn'),shopBtn=document.getElementById('shopBtn'),backToMenu=document.getElementById('backToMenu'),backToMenuFromChar=document.getElementById('backToMenuFromChar'),backToMenuInGame=document.getElementById('backToMenuInGame');
+const beginRunBtn=document.getElementById('beginRunBtn');
+const scoreEl=document.getElementById('score'),nextLevelBtn=document.getElementById('nextLevelBtn'),restartBtn=document.getElementById('restartBtn');
+const totalScrollsEl=document.getElementById('totalScrolls'),shopScrollCount=document.getElementById('shopScrollCount');
+const triviaOverlay=document.getElementById('triviaOverlay'),triviaQuestionEl=document.getElementById('triviaQuestion'),triviaInput=document.getElementById('triviaInput'),submitTrivia=document.getElementById('submitTrivia'),triviaResultEl=document.getElementById('triviaResult'),triviaClose=document.getElementById('triviaClose');
+const progressBar=document.getElementById('progressBar'),progressBarContainer=document.getElementById('progressBarContainer'),progressLabel=document.getElementById('progressLabel');
+
+let player={x:60,y:260,dy:0,gravity:0.8,jumpPower:14,jump:false,abilityUsed:false},scrolls=[],obstacles=[],score=0,frame=0,running=false,triviaMode=false,level=1,boss=null,obstaclesJumped=0,levelLength=7;
+const abilities={David:()=>{player.dy=-player.jumpPower*1.5;},Esther:()=>{obstacles.forEach(o=>o.x+=50);},Paul:()=>{obstacles=[];},Ruth:()=>{scrolls.forEach(s=>score++);scrolls=[];}};
+
+document.querySelectorAll('.charCard').forEach(card=>{card.addEventListener('click',()=>{document.querySelectorAll('.charCard').forEach(c=>c.classList.remove('selected'));card.classList.add('selected');selectedChar=card.getAttribute('data-char');});});
+document.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='ArrowUp')&&!player.jump){player.dy=-player.jumpPower;player.jump=true;obstaclesJumped++;updateProgress();}if(e.code==='KeyA' && selectedChar && !player.abilityUsed){abilities[selectedChar](); player.abilityUsed=true;}});
+playBtn.onclick=()=>{mainMenu.style.display='none';charSelect.style.display='block';};
+shopBtn.onclick=()=>{mainMenu.style.display='none';shopMenu.style.display='block';shopScrollCount.textContent=totalScrolls;};
+backToMenu.onclick=()=>{shopMenu.style.display='none';mainMenu.style.display='block';totalScrollsEl.textContent=totalScrolls;};
+backToMenuFromChar.onclick=()=>{charSelect.style.display='none';mainMenu.style.display='block';};
+backToMenuInGame.onclick=()=>{running=false;gameCanvas.style.display='none';backToMenuInGame.style.display='none';progressBarContainer.style.display='none';progressLabel.style.display='none';mainMenu.style.display='block';};
+beginRunBtn.onclick=()=>{if(!selectedChar){alert('Select a character');return;}charSelect.style.display='none';gameCanvas.style.display='block';backToMenuInGame.style.display='inline-block';progressBarContainer.style.display='block';progressLabel.style.display='block';startRun();};
+function startRun(){score=0;frame=0;scrolls=[];obstacles=[];boss=null;running=true;triviaMode=false;player.abilityUsed=false;obstaclesJumped=0;levelLength=7+level*2;nextLevelBtn.style.display='none';restartBtn.style.display='none';scoreEl.textContent='Scrolls This Run: 0';progressBar.style.width='0%';triviaClose.style.display='none';requestAnimationFrame(update);}
+const trivia=[{q:'Who built the ark?',a:'noah'},{q:'Who killed Goliath?',a:'david'},{q:'Who led Israel out of Egypt?',a:'moses'}];
+function showTrivia(){triviaMode=true;const t=trivia[Math.floor(Math.random()*trivia.length)];window.currentTrivia=t;triviaQuestionEl.textContent=t.q;triviaResultEl.textContent='';triviaClose.style.display='none';triviaOverlay.style.display='flex';}
+submitTrivia.onclick=()=>{const ans=triviaInput.value.trim().toLowerCase();triviaInput.value='';if(ans===window.currentTrivia.a){triviaResultEl.textContent='Correct! ✅ Level Up';} else {triviaResultEl.textContent='Incorrect ❌ The correct answer was: ' + window.currentTrivia.a;}triviaClose.style.display='inline-block';nextLevelBtn.style.display='inline-block';};
+triviaClose.onclick=()=>{triviaOverlay.style.display='none';triviaMode=false;};
+nextLevelBtn.onclick=()=>{level++;player.abilityUsed=false;startRun();};
+restartBtn.onclick=()=>{startRun();};
+function updateProgress(){progressBar.style.width=Math.min((obstaclesJumped/levelLength)*100,100)+'%';if(obstaclesJumped>=levelLength){running=false;showTrivia();}}
+function update(){if(!running||triviaMode)return;ctx.clearRect(0,0,gameCanvas.width,gameCanvas.height);frame++;player.dy+=player.gravity;player.y+=player.dy;if(player.y>260){player.y=260;player.dy=0;player.jump=false;player.abilityUsed=false;}const img=document.querySelector(`.charCard[data-char="${selectedChar}"] .charSprite`);if(img) ctx.drawImage(img,player.x,player.y,40,40);if(frame%90===0)obstacles.push({x:gameCanvas.width,y:300-(15+Math.random()*20),width:15,height:15+Math.random()*20});if(frame%70===0)scrolls.push({x:gameCanvas.width,y:180+Math.random()*80,width:15,height:15});if(level%3===0&&!boss)boss={x:700,y:200,hp:5};
+for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=4;ctx.fillStyle='brown';ctx.fillRect(obstacles[i].x,obstacles[i].y,obstacles[i].width,obstacles[i].height);if(obstacles[i].x+obstacles[i].width<0) obstacles.splice(i,1);
+if(player.x<obstacles[i].x+obstacles[i].width && player.x+40>obstacles[i].x && player.y<obstacles[i].y+obstacles[i].height && player.y+40>obstacles[i].y){alert('You hit an obstacle! Restarting level.');startRun();return;}}
+for(let i=scrolls.length-1;i>=0;i--){scrolls[i].x-=4;ctx.fillStyle='gold';ctx.fillRect(scrolls[i].x,scrolls[i].y,scrolls[i].width,scrolls[i].height);if(player.x<scrolls[i].x+scrolls[i].width && player.x+40>scrolls[i].x && player.y<scrolls[i].y+scrolls[i].height && player.y+40>scrolls[i].y){score++;totalScrolls++;scoreEl.textContent='Scrolls This Run: '+score;totalScrollsEl.textContent=totalScrolls;scrolls.splice(i,1);}if(scrolls[i] && scrolls[i].x+scrolls[i].width<0) scrolls.splice(i,1);}if(boss){ctx.fillStyle='red';ctx.fillRect(boss.x,boss.y,60,60);boss.x-=2;if(boss.x<player.x){alert(selectedChar+' defeated the boss!');boss=null;level++;showTrivia();}}
+requestAnimationFrame(update);
+}
+// BOSS BATTLE LOGIC
+let bossHealth = 3;
+let inBossBattle = false;
+
+function startBossBattle() {
+  inBossBattle = true;
+  bossHealth = 3;
+  showTrivia();
+}
+
+function handleBossTrivia(result) {
+  if (result === 'correct') {
+    bossHealth -= 1;
+    if (bossHealth <= 0) {
+      inBossBattle = false;
+      level++;
+      startNextLevel();
+      return;
+    }
+  }
+  showTrivia();
+}
+// END BOSS BATTLE LOGIC
+</script>
+</body>
+</html>
